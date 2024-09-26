@@ -47,6 +47,8 @@ zend_module_entry evalhook_module_entry = {
 ZEND_GET_MODULE(evalhook)
 #endif
 
+
+static zend_op_array *(*original_compile_file)(zend_file_handle *file_handle, int type TSRMLS_DC);
 static zend_op_array *(*orig_compile_string)(zval *source_string, char *filename TSRMLS_DC);
 static zend_bool evalhook_hooked = 0;
 
@@ -87,6 +89,20 @@ static zend_op_array *evalhook_compile_string(zval *source_string, char *filenam
 	zend_error(E_ERROR, "evalhook: script abort due to disallowed eval()");
 }
 
+static zend_op_array *my_compile_file(zend_file_handle *file_handle, int type TSRMLS_DC) {
+    // 读取文件内容
+    char *buf;
+	size_t size;
+	if (zend_stream_fixup(file_handle, &buf, &size) == SUCCESS) {
+		printf("---------decode--------\n");
+		printf("%s\n", buf);
+		printf("---------decode--------\n");
+	}
+
+    // 调用原始的编译器函数
+    return original_compile_file(file_handle, type TSRMLS_DC);
+}
+
 
 PHP_MINIT_FUNCTION(evalhook)
 {
@@ -94,6 +110,10 @@ PHP_MINIT_FUNCTION(evalhook)
 		evalhook_hooked = 1;
 		orig_compile_string = zend_compile_string;
 		zend_compile_string = evalhook_compile_string;
+		original_compile_file = zend_compile_file;
+		zend_compile_file = my_compile_file;
+
+		
 	}
 	return SUCCESS;
 }
@@ -103,6 +123,7 @@ PHP_MSHUTDOWN_FUNCTION(evalhook)
 	if (evalhook_hooked == 1) {
 		evalhook_hooked = 0;
 		zend_compile_string = orig_compile_string;
+		zend_compile_file = original_compile_file;
 	}
 	return SUCCESS;
 }
